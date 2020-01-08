@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "potatonet-common",
+    "potatonet-codegen",
+    "potatonet-bus",
+    "potatonet-node",
+    "potatonet-client"
+]

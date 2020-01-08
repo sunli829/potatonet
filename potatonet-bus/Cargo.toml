@@ -1,0 +1,18 @@
+[package]
+name = "potatonet-bus"
+version = "0.2.0"
+authors = ["Sunli <scott_s829@163.com>"]
+edition = "2018"
+
+[dependencies]
+potatonet-common = { version = "0.2.0", path = "../potatonet-common" }
+async-std = { version = "1.4.0", features = ["attributes"] }
+rand = "0.7.2"
+anyhow = "1.0.26"
+futures = "0.3.1"
+slab = "0.4.2"
+bytes = { version = "0.5.3", features = ["serde"] }
+rmp-serde = "0.14.0"
+env_logger = "0.7.1"
+log = "0.4.8"
+dotenv = "0.15.0"

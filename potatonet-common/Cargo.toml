@@ -1,0 +1,15 @@
+[package]
+name = "potatonet-common"
+version = "0.2.0"
+authors = ["Sunli <scott_s829@163.com>"]
+edition = "2018"
+
+[dependencies]
+serde = "1.0.104"
+serde_derive = "1.0.104"
+bytes = { version = "0.5.3", features = ["serde"] }
+rmp-serde = "0.14.0"
+anyhow = "1.0.26"
+futures = "0.3.1"
+async-trait = "0.1.22"
+thiserror = "1.0.9"
