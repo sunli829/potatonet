@@ -132,7 +132,7 @@ impl NodeBuilder {
                                     let requests = requests.clone();
 
                                     async move {
-                                        if let Some((_, init, service)) =
+                                        if let Some((service_name, init, service)) =
                                             app.services.get(to.to_u32() as usize)
                                         {
                                             if init.load(Ordering::Relaxed) {
@@ -140,6 +140,7 @@ impl NodeBuilder {
                                                     .call(
                                                         &NodeContext {
                                                             from,
+                                                            service_name,
                                                             node_id,
                                                             local_service_id: to,
                                                             app: &app,
@@ -198,7 +199,7 @@ impl NodeBuilder {
 
                                     async move {
                                         if let Some(lid) = app.services_map.get(&to_service) {
-                                            if let Some((_, init, service)) =
+                                            if let Some((service_name, init, service)) =
                                                 app.services.get(lid.to_u32() as usize)
                                             {
                                                 if init.load(Ordering::Relaxed) {
@@ -206,6 +207,7 @@ impl NodeBuilder {
                                                         .notify(
                                                             &NodeContext {
                                                                 from,
+                                                                service_name,
                                                                 node_id,
                                                                 local_service_id: *lid,
                                                                 app: &app,
@@ -230,7 +232,7 @@ impl NodeBuilder {
                                     let requests = requests.clone();
 
                                     async move {
-                                        for (idx, (_, init, service)) in
+                                        for (idx, (service_name, init, service)) in
                                             app.services.iter().enumerate()
                                         {
                                             if init.load(Ordering::Relaxed) {
@@ -238,6 +240,7 @@ impl NodeBuilder {
                                                         .event(
                                                             &NodeContext {
                                                                 from: None,
+                                                                service_name,
                                                                 node_id,
                                                                 local_service_id: LocalServiceId::from_u32(
                                                                     idx as u32,
@@ -264,12 +267,13 @@ impl NodeBuilder {
         });
 
         // 初始化所有服务
-        for (idx, (name, init, service)) in app.services.iter().enumerate() {
-            info!("initialize service. name={}", name);
+        for (idx, (service_name, init, service)) in app.services.iter().enumerate() {
+            info!("initialize service. name={}", service_name);
             let lid = LocalServiceId::from_u32(idx as u32);
             service
                 .init(&NodeContext {
                     from: None,
+                    service_name,
                     node_id,
                     local_service_id: lid,
                     app: &app,
@@ -282,7 +286,7 @@ impl NodeBuilder {
 
             // 注册服务
             tx.send(bus_message::Message::RegisterService {
-                name: name.clone(),
+                name: service_name.clone(),
                 id: lid,
             })
             .await

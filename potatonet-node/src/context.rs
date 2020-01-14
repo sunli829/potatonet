@@ -17,6 +17,9 @@ pub struct NodeContext<'a> {
     /// 请求或者通知来源
     pub(crate) from: Option<ServiceId>,
 
+    // 当前服务名
+    pub(crate) service_name: &'a str,
+
     /// 当前节点id
     pub(crate) node_id: NodeId,
 
@@ -40,6 +43,11 @@ impl<'a> NodeContext<'a> {
     /// 请求或者通知来源服务id
     pub fn from(&self) -> Option<ServiceId> {
         self.from
+    }
+
+    /// 当前服务名称
+    pub fn service_name(&self) -> &str {
+        self.service_name
     }
 
     /// 当前服务id
