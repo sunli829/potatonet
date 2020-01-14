@@ -147,7 +147,7 @@ impl NodeBuilder {
                                                             requests,
                                                             abort_handle,
                                                         },
-                                                        &Request::new(method, data),
+                                                        Request::new(method, data),
                                                     )
                                                     .await;
                                                 tx.send(bus_message::Message::Rep {
@@ -213,7 +213,7 @@ impl NodeBuilder {
                                                                 requests,
                                                                 abort_handle,
                                                             },
-                                                            &Request::new(method, data),
+                                                            Request::new(method, data),
                                                         )
                                                         .await;
                                                 }

@@ -5,11 +5,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::quote;
 use syn::spanned::Spanned;
-use syn::{
-    parse_macro_input, AngleBracketedGenericArguments, Attribute, Block, Error, FnArg,
-    GenericArgument, ImplItem, ImplItemMethod, ItemImpl, LitStr, Meta, NestedMeta, Pat, PatIdent,
-    PathArguments, Result, ReturnType, Type, TypePath,
-};
+use syn::{parse_macro_input, AngleBracketedGenericArguments, Attribute, Block, Error, FnArg, GenericArgument, ImplItem, ImplItemMethod, ItemImpl, LitStr, Meta, NestedMeta, Pat, PatIdent, PathArguments, Result, ReturnType, Type, TypePath, DeriveInput};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum MethodType {
@@ -482,14 +478,14 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                 #(#other_methods)*
 
                 #[allow(unused_variables)]
-                async fn call(&self, ctx: &potatonet_node::NodeContext<'_>, request: &potatonet_node::Request<Self::Req>) ->
+                async fn call(&self, ctx: &potatonet_node::NodeContext<'_>, request: potatonet_node::Request<Self::Req>) ->
                     potatonet_common::Result<potatonet_node::Response<Self::Rep>> {
                     #req_handler
                     Err(potatonet_common::Error::MethodNotFound { method: request.method.clone() }.into())
                 }
 
                 #[allow(unused_variables)]
-                async fn notify(&self, ctx: &potatonet_node::NodeContext<'_>, request: &potatonet_common::Request<Self::Notify>) {
+                async fn notify(&self, ctx: &potatonet_node::NodeContext<'_>, request: potatonet_common::Request<Self::Notify>) {
                     #notify_handler
                 }
             }
@@ -528,5 +524,15 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
+    expanded.into()
+}
+
+#[proc_macro_attribute]
+pub fn message(_args: TokenStream, input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let expanded = quote! {
+        #[derive(potatonet_node::serde_derive::Serialize, potatonet_node::serde_derive::Deserialize)]
+        #input
+    };
     expanded.into()
 }

@@ -28,7 +28,7 @@ pub trait Service: Sync + Send {
     async fn call(
         &self,
         ctx: &NodeContext<'_>,
-        request: &Request<Self::Req>,
+        request: Request<Self::Req>,
     ) -> Result<Response<Self::Rep>> {
         bail!(Error::MethodNotFound {
             method: request.method.clone()
@@ -37,7 +37,7 @@ pub trait Service: Sync + Send {
 
     /// 通知
     #[allow(unused_variables)]
-    async fn notify(&self, ctx: &NodeContext<'_>, request: &Request<Self::Notify>) {}
+    async fn notify(&self, ctx: &NodeContext<'_>, request: Request<Self::Notify>) {}
 
     /// 系统事件
     #[allow(unused_variables)]
@@ -74,15 +74,15 @@ where
     async fn call(
         &self,
         ctx: &NodeContext<'_>,
-        request: &Request<Self::Req>,
+        request: Request<Self::Req>,
     ) -> Result<Response<Self::Rep>> {
         let req = Request::from_bytes(request);
-        let resp = self.0.call(ctx, &req).await?.to_bytes();
+        let resp = self.0.call(ctx, req).await?.to_bytes();
         Ok(resp)
     }
 
-    async fn notify(&self, ctx: &NodeContext<'_>, request: &Request<Self::Req>) {
-        self.0.notify(ctx, &Request::from_bytes(request)).await;
+    async fn notify(&self, ctx: &NodeContext<'_>, request: Request<Self::Req>) {
+        self.0.notify(ctx, Request::from_bytes(request)).await;
     }
 
     async fn event(&self, ctx: &NodeContext<'_>, event: &Event) {

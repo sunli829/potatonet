@@ -121,7 +121,7 @@ impl Context for Client {
             .ok();
 
         match async_std::future::timeout(Duration::from_secs(5), rx).await {
-            Ok(Ok(Ok(resp))) => Ok(Response::<R>::from_bytes(&resp)),
+            Ok(Ok(Ok(resp))) => Ok(Response::<R>::from_bytes(resp)),
             Ok(Ok(Err(err))) => Err(anyhow!(err)),
             Ok(Err(_)) => {
                 let mut inner = self.inner.lock().await;

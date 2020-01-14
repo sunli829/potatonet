@@ -37,20 +37,27 @@ async fn test_service() {
 
     assert_eq!(testservice_client.add_one(10).await.unwrap(), 110);
     assert_eq!(testservice_client.add_one(50).await.unwrap(), 160);
+    assert_eq!(
+        testservice_client
+            .add_one2(CustomMessage { value: 30 })
+            .await
+            .unwrap(),
+        190
+    );
 
-    assert_eq!(testservice_client.add_two(30, 60).await.unwrap(), 250);
-    assert_eq!(testservice_client.add_two2(11, 22).await.unwrap(), 283);
+    assert_eq!(testservice_client.add_two(30, 60).await.unwrap(), 280);
+    assert_eq!(testservice_client.add_two2(11, 22).await.unwrap(), 313);
 
     testservice_client.notify_sub(5).await;
     task::sleep(Duration::from_secs(1)).await;
-    assert_eq!(testservice_client.get().await.unwrap(), 278);
+    assert_eq!(testservice_client.get().await.unwrap(), 308);
 
     testservice_client.notify_sub2(6, 12).await;
     task::sleep(Duration::from_secs(1)).await;
-    assert_eq!(testservice_client.get().await.unwrap(), 260);
+    assert_eq!(testservice_client.get().await.unwrap(), 290);
 
     // ProxyService
     let proxyservice_client = ProxyServiceClient::new(&client);
-    assert_eq!(proxyservice_client.add_one(4).await.unwrap(), 264);
-    assert_eq!(proxyservice_client.add_one(10).await.unwrap(), 274);
+    assert_eq!(proxyservice_client.add_one(4).await.unwrap(), 294);
+    assert_eq!(proxyservice_client.add_one(10).await.unwrap(), 304);
 }

@@ -67,8 +67,8 @@ impl<'a> Context for NodeContext<'a> {
             if let Some(lid) = self.app.services_map.get(service_name) {
                 if let Some((_, init, service)) = self.app.services.get(lid.to_u32() as usize) {
                     if init.load(Ordering::Relaxed) {
-                        let resp = service.call(self, &request.to_bytes()).await?;
-                        let new_resp = Response::from_bytes(&resp);
+                        let resp = service.call(self, request.to_bytes()).await?;
+                        let new_resp = Response::from_bytes(resp);
                         return Ok(new_resp);
                     }
                 }
@@ -89,7 +89,7 @@ impl<'a> Context for NodeContext<'a> {
             .await
             .ok();
         match async_std::future::timeout(Duration::from_secs(5), rx).await {
-            Ok(Ok(Ok(resp))) => Ok(Response::<R>::from_bytes(&resp)),
+            Ok(Ok(Ok(resp))) => Ok(Response::<R>::from_bytes(resp)),
             Ok(Ok(Err(err))) => Err(anyhow!(err)),
             Ok(Err(_)) => {
                 let mut requests = self.requests.lock().await;
@@ -113,7 +113,7 @@ impl<'a> Context for NodeContext<'a> {
         if let Some(lid) = self.app.services_map.get(service_name) {
             if let Some((_, init, service)) = self.app.services.get(lid.to_u32() as usize) {
                 if init.load(Ordering::Relaxed) {
-                    service.notify(self, &request).await;
+                    service.notify(self, request.clone()).await;
                 }
             }
         }

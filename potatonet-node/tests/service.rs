@@ -6,6 +6,11 @@ pub struct TestService {
     sum: AtomicI32,
 }
 
+#[message]
+pub struct CustomMessage {
+    pub value: i32,
+}
+
 #[service]
 impl TestService {
     async fn init(&self, _ctx: &NodeContext<'_>) {
@@ -29,6 +34,12 @@ impl TestService {
     #[call]
     async fn add_one(&self, n: i32) -> Result<i32> {
         self.sum.fetch_add(n, Ordering::Relaxed);
+        Ok(self.sum.load(Ordering::Relaxed))
+    }
+
+    #[call]
+    async fn add_one2(&self, msg: CustomMessage) -> Result<i32> {
+        self.sum.fetch_add(msg.value, Ordering::Relaxed);
         Ok(self.sum.load(Ordering::Relaxed))
     }
 
