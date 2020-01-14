@@ -15,13 +15,13 @@ pub trait Service: Sync + Send {
     /// 通知类型
     type Notify: Serialize + DeserializeOwned + Send + Sync;
 
-    /// 服务初始化
+    /// 开始服务
     #[allow(unused_variables)]
-    async fn init(&self, ctx: &NodeContext<'_>) {}
+    async fn start(&self, ctx: &NodeContext<'_>) {}
 
-    /// 服务停止
+    /// 停止服务
     #[allow(unused_variables)]
-    async fn shutdown(&self, ctx: &NodeContext<'_>) {}
+    async fn stop(&self, ctx: &NodeContext<'_>) {}
 
     /// 功能调用
     #[allow(unused_variables)]
@@ -63,12 +63,12 @@ where
     type Rep = Bytes;
     type Notify = Bytes;
 
-    async fn init(&self, ctx: &NodeContext<'_>) {
-        self.0.init(ctx).await
+    async fn start(&self, ctx: &NodeContext<'_>) {
+        self.0.start(ctx).await
     }
 
-    async fn shutdown(&self, ctx: &NodeContext<'_>) {
-        self.0.shutdown(ctx).await
+    async fn stop(&self, ctx: &NodeContext<'_>) {
+        self.0.stop(ctx).await
     }
 
     async fn call(

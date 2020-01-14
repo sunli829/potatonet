@@ -1,8 +1,46 @@
+[package]
+name = "potatonet"
+version = "0.3.0"
+authors = ["Sunli <scott_s829@163.com>"]
+description = "PotatoNet is a lightweight microservices framework."
+edition = "2018"
+publish = true
+license = "MIT"
+homepage = "https://github.com/sunli829/potatonet"
+repository = "https://github.com/sunli829/potatonet"
+keywords = ["rpc", "network", "macroservice"]
+categories = ["network-programming"]
+
+[features]
+default = [
+    "bus", "client", "codegen", "node",
+    "service-logger"
+]
+bus = ["potatonet-bus"]
+client = ["potatonet-client"]
+codegen = ["potatonet-codegen"]
+node = ["potatonet-node"]
+service-logger = ["potatonet-service-logger"]
+
+[dependencies]
+potatonet-common = { version = "0.3.0", path = "potatonet-common" }
+potatonet-bus = { version = "0.3.0", path = "potatonet-bus", optional = true }
+potatonet-client = { version = "0.3.0", path = "potatonet-client", optional = true }
+potatonet-codegen = { version = "0.3.0", path = "potatonet-codegen", optional = true }
+potatonet-node = { version = "0.3.0", path = "potatonet-node", optional = true }
+potatonet-service-logger = { version = "0.3.0", path = "potatonet-service-logger", optional = true }
+serde = "1.0.104"
+async-std = { version = "1.4.0", features = ["attributes"] }
+
+[dev-dependencies]
+rustyline = "6.0.0"
+
 [workspace]
 members = [
     "potatonet-common",
     "potatonet-codegen",
     "potatonet-bus",
     "potatonet-node",
-    "potatonet-client"
+    "potatonet-client",
+    "potatonet-service-logger"
 ]

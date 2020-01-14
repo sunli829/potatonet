@@ -1,6 +1,6 @@
 [package]
 name = "potatonet-node"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Sunli <scott_s829@163.com>"]
 description = "PotatoNet is a lightweight microservices framework."
 edition = "2018"
@@ -8,10 +8,12 @@ publish = true
 license = "MIT"
 homepage = "https://github.com/sunli829/potatonet"
 repository = "https://github.com/sunli829/potatonet"
+keywords = ["rpc", "network", "macroservice"]
+categories = ["network-programming"]
 
 [dependencies]
-potatonet-common = { version = "0.2.0", path = "../potatonet-common" }
-potatonet-codegen = { version = "0.2.0", path = "../potatonet-codegen" }
+potatonet-common = { version = "0.3.0", path = "../potatonet-common" }
+potatonet-codegen = { version = "0.3.0", path = "../potatonet-codegen" }
 async-trait = "0.1.22"
 anyhow = "1.0.26"
 futures = "0.3.1"
@@ -25,5 +27,5 @@ async-std = { version = "1.4.0", features = ["attributes"] }
 
 [dev-dependencies]
 env_logger = "0.7.1"
-potatonet-client = { version = "0.2.0", path = "../potatonet-client" }
-potatonet-bus = { version = "0.2.0", path = "../potatonet-bus" }
+potatonet-client = { version = "0.3.0", path = "../potatonet-client" }
+potatonet-bus = { version = "0.3.0", path = "../potatonet-bus" }

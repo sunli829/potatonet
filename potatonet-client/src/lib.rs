@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate anyhow;
 
+#[doc(hidden)]
 pub use potatonet_common::*;
 
 use async_std::net::{TcpStream, ToSocketAddrs};

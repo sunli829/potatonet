@@ -266,8 +266,8 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                     Err(err) => return err.to_compile_error().into(),
                 };
                 methods.push(method);
-            } else if ident == "init" || ident == "shutdown" {
-                // 初始化或者服务停止
+            } else if ident == "start" || ident == "stop" {
+                // 开始或者停止服务
                 other_methods.push(item);
             } else {
                 // 内部函数
@@ -289,7 +289,7 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                 reqs.push(quote! { #name(#(#types),*) });
             }
             quote! {
-                #[derive(serde_derive::Serialize, serde_derive::Deserialize)]
+                #[derive(potatonet_node::serde_derive::Serialize, potatonet_node::serde_derive::Deserialize)]
                 pub enum #req_type_name { #(#reqs),* }
             }
         };
@@ -309,7 +309,7 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                 }
             }
             quote! {
-                #[derive(serde_derive::Serialize, serde_derive::Deserialize)]
+                #[derive(potatonet_node::serde_derive::Serialize, potatonet_node::serde_derive::Deserialize)]
                 pub enum #rep_type_name { #(#reps),* }
             }
         };
@@ -326,7 +326,7 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                 notify.push(quote! { #name(#(#types),*) });
             }
             quote! {
-                #[derive(serde_derive::Serialize, serde_derive::Deserialize)]
+                #[derive(potatonet_node::serde_derive::Serialize, potatonet_node::serde_derive::Deserialize)]
                 pub enum #notify_type_name { #(#notify),* }
             }
         };
@@ -354,7 +354,7 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                             if request.method == #method_name {
                                 if let #req_type_name::#name(#(#vars),*) = request.data {
                                     #ctx
-                                    return Ok(potatonet_common::Response::new(#rep_type_name::#name(#block)));
+                                    return Ok(potatonet_node::Response::new(#rep_type_name::#name(#block)));
                                 }
                             }
                         });
@@ -365,7 +365,7 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                                 if let #req_type_name::#name(#(#vars),*) = request.data {
                                     #ctx
                                     let res = #block;
-                                    return Ok(potatonet_common::Response::new(#rep_type_name::#name(res)));
+                                    return Ok(potatonet_node::Response::new(#rep_type_name::#name(res)));
                                 }
                             }
                         });
@@ -375,7 +375,7 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                             if request.method == #method_name {
                                 if let #req_type_name::#name(#(#vars),*) = request.data {
                                     #ctx
-                                    let res: potatonet_common::Result<potatonet_common::Response<Self::Rep>> = #block.map(|x| potatonet_common::Response::new(#rep_type_name::#name(x)));
+                                    let res: potatonet_node::Result<potatonet_node::Response<Self::Rep>> = #block.map(|x| potatonet_node::Response::new(#rep_type_name::#name(x)));
                                     return res;
                                 }
                             }
@@ -438,9 +438,9 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                                 MethodResult::Result(value) => quote! { #value },
                             };
                             quote! {
-                                pub async fn #method_name(&self, #(#params),*) -> potatonet_common::Result<#res_type> {
-                                    let res = self.ctx.call::<_, #rep_type_name>(&self.service_name, potatonet_common::Request::new(#method_str, #req_type_name::#name(#(#vars),*))).await?;
-                                    if let potatonet_common::Response{data: #rep_type_name::#name(value)} = res {
+                                pub async fn #method_name(&self, #(#params),*) -> potatonet_node::Result<#res_type> {
+                                    let res = self.ctx.call::<_, #rep_type_name>(&self.service_name, potatonet_node::Request::new(#method_str, #req_type_name::#name(#(#vars),*))).await?;
+                                    if let potatonet_node::Response{data: #rep_type_name::#name(value)} = res {
                                         Ok(value)
                                     } else {
                                         unreachable!()
@@ -451,7 +451,7 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                         MethodType::Notify => {
                             quote! {
                                 pub async fn #method_name(&self, #(#params),*) {
-                                    self.ctx.notify(&self.service_name, potatonet_common::Request::new(#method_str, #notify_type_name::#name(#(#vars),*))).await
+                                    self.ctx.notify(&self.service_name, potatonet_node::Request::new(#method_str, #notify_type_name::#name(#(#vars),*))).await
                                 }
                             }
                         }
@@ -478,13 +478,13 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
 
                 #[allow(unused_variables)]
                 async fn call(&self, ctx: &potatonet_node::NodeContext<'_>, request: potatonet_node::Request<Self::Req>) ->
-                    potatonet_common::Result<potatonet_node::Response<Self::Rep>> {
+                    potatonet_node::Result<potatonet_node::Response<Self::Rep>> {
                     #req_handler
-                    Err(potatonet_common::Error::MethodNotFound { method: request.method.clone() }.into())
+                    Err(potatonet_node::Error::MethodNotFound { method: request.method.clone() }.into())
                 }
 
                 #[allow(unused_variables)]
-                async fn notify(&self, ctx: &potatonet_node::NodeContext<'_>, request: potatonet_common::Request<Self::Notify>) {
+                async fn notify(&self, ctx: &potatonet_node::NodeContext<'_>, request: potatonet_node::Request<Self::Notify>) {
                     #notify_handler
                 }
             }
@@ -505,7 +505,7 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                 service_name: std::borrow::Cow<'static, str>,
             }
 
-            impl<'a, C: potatonet_common::Context> #client_ty<'a, C> {
+            impl<'a, C: potatonet_node::Context> #client_ty<'a, C> {
                 pub fn new(ctx: &'a C) -> Self {
                     Self { ctx, service_name: std::borrow::Cow::Borrowed(#self_name) }
                 }

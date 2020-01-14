@@ -17,5 +17,6 @@ pub use app::App;
 pub use context::NodeContext;
 pub use node::NodeBuilder;
 pub use potatonet_codegen::{message, service};
+#[doc(hidden)]
 pub use potatonet_common::*;
 pub use service::{NamedService, Service};

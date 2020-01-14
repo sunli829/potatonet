@@ -266,12 +266,12 @@ impl NodeBuilder {
             )
         });
 
-        // 初始化所有服务
+        // 开始所有服务
         for (idx, (service_name, init, service)) in app.services.iter().enumerate() {
-            info!("initialize service. name={}", service_name);
+            info!("start service. name={}", service_name);
             let lid = LocalServiceId::from_u32(idx as u32);
             service
-                .init(&NodeContext {
+                .start(&NodeContext {
                     from: None,
                     service_name,
                     node_id,

@@ -13,11 +13,11 @@ pub struct CustomMessage {
 
 #[service]
 impl TestService {
-    async fn init(&self, _ctx: &NodeContext<'_>) {
+    async fn start(&self, _ctx: &NodeContext<'_>) {
         self.sum.store(100, Ordering::Relaxed);
     }
 
-    async fn shutdown(&self, _ctx: &NodeContext<'_>) {
+    async fn stop(&self, _ctx: &NodeContext<'_>) {
         self.sum.store(0, Ordering::Relaxed);
     }
 

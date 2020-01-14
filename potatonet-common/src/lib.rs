@@ -3,7 +3,9 @@ extern crate serde_derive;
 #[macro_use]
 extern crate thiserror;
 
+#[doc(hidden)]
 pub mod bus_message;
+
 mod error;
 mod events;
 mod id;
