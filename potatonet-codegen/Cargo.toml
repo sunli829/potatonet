@@ -2,13 +2,18 @@
 name = "potatonet-codegen"
 version = "0.2.0"
 authors = ["sunli"]
+description = "PotatoNet is a lightweight microservices framework."
 edition = "2018"
+publish = true
+license = "MIT"
+homepage = "https://github.com/sunli829/potatonet"
+repository = "https://github.com/sunli829/potatonet"
 
 [lib]
 proc-macro = true
 
 [dependencies]
 proc-macro2 = "1.0.6"
-syn = "1.0.11"
+syn = { version = "1.0.13", features = ["full"] }
 quote = "1.0.2"
-itertools = "0.8.2"
+

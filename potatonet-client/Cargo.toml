@@ -2,7 +2,12 @@
 name = "potatonet-client"
 version = "0.2.0"
 authors = ["Sunli <scott_s829@163.com>"]
+description = "PotatoNet is a lightweight microservices framework."
 edition = "2018"
+publish = true
+license = "MIT"
+homepage = "https://github.com/sunli829/potatonet"
+repository = "https://github.com/sunli829/potatonet"
 
 [dependencies]
 potatonet-common = { version = "0.2.0", path = "../potatonet-common" }

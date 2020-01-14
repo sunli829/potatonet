@@ -1,6 +1,5 @@
 extern crate proc_macro;
 
-use itertools::Itertools;
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::quote;
@@ -286,7 +285,7 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                 .filter(|method| method.ty == MethodType::Call)
             {
                 let name = Ident::new(&method.name.to_string().to_uppercase(), method.name.span());
-                let types = method.args.iter().map(|(_, ty)| ty).collect_vec();
+                let types = method.args.iter().map(|(_, ty)| ty).collect::<Vec<_>>();
                 reqs.push(quote! { #name(#(#types),*) });
             }
             quote! {
