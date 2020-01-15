@@ -1,3 +1,4 @@
+use linefeed::{Interface, ReadResult};
 use potatonet::client::*;
 
 mod echoservice;
@@ -9,18 +10,14 @@ async fn main() {
         .expect("failed to connect to bus");
     let echo_client = echoservice::EchoClient::new(&client);
 
-    let mut rl = rustyline::Editor::<()>::new();
-    loop {
-        let readline = rl.readline(">> ");
-        match readline {
-            Ok(line) => {
-                let res = echo_client
-                    .send(line)
-                    .await
-                    .expect("failed to send message");
-                println!("reply: {}", res);
-            }
-            Err(_) => return,
-        }
+    let reader = Interface::new("echo client").unwrap();
+    reader.set_prompt(">> ").unwrap();
+
+    while let ReadResult::Input(input) = reader.read_line().unwrap() {
+        let res = echo_client
+            .send(input)
+            .await
+            .expect("failed to send message");
+        println!("reply: {}", res);
     }
 }
