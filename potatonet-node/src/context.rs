@@ -1,4 +1,4 @@
-use crate::node::Requests;
+use crate::node::{LocalNotify, Requests};
 use crate::{App, Error, LocalServiceId, NodeId, Request, Response, ServiceId};
 use anyhow::Result;
 use futures::channel::mpsc;
@@ -31,6 +31,9 @@ pub struct NodeContext<'a> {
 
     /// 发送消息
     pub(crate) tx: mpsc::Sender<bus_message::Message>,
+
+    /// 通知本地服务
+    pub(crate) tx_local_notify: mpsc::UnboundedSender<LocalNotify>,
 
     /// 未完成请求表
     pub(crate) requests: Arc<Mutex<Requests>>,
@@ -119,11 +122,15 @@ impl<'a> Context for NodeContext<'a> {
 
         // 通知本地服务
         if let Some(lid) = self.app.services_map.get(service_name) {
-            if let Some((_, init, service)) = self.app.services.get(lid.to_u32() as usize) {
-                if init.load(Ordering::Relaxed) {
-                    service.notify(self, request.clone()).await;
-                }
-            }
+            self.tx_local_notify
+                .clone()
+                .send(LocalNotify {
+                    from: self.local_service_id,
+                    to: *lid,
+                    request: request.clone(),
+                })
+                .await
+                .ok();
         }
 
         // 通知远程服务

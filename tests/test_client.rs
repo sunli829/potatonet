@@ -1,8 +1,8 @@
 mod service;
 
 use async_std::task;
-use potatonet_client::*;
-use potatonet_node::*;
+use potatonet::client::*;
+use potatonet::node::*;
 use service::*;
 use std::time::Duration;
 

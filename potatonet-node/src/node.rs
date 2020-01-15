@@ -7,7 +7,7 @@ use futures::future::{AbortHandle, Abortable};
 use futures::lock::Mutex;
 use futures::prelude::*;
 use potatonet_common::bus_message::Message;
-use potatonet_common::{bus_message, LocalServiceId};
+use potatonet_common::{bus_message, LocalServiceId, RequestBytes};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -34,6 +34,12 @@ impl Requests {
     pub fn remove(&mut self, seq: u32) {
         self.pending.remove(&seq);
     }
+}
+
+pub struct LocalNotify {
+    pub from: LocalServiceId,
+    pub to: LocalServiceId,
+    pub request: RequestBytes,
 }
 
 /// 节点构建器
@@ -105,14 +111,59 @@ impl NodeBuilder {
             }
         });
 
-        // 处理消息
-        let requests = Arc::new(Mutex::new(Requests::default()));
         let app = Arc::new(self.app);
+        let requests = Arc::new(Mutex::new(Requests::default()));
 
+        // 处理本地通知消息
+        // 同一个节点的服务发送给另一个服务的通知发送到该队列，避免循环通知出现的栈溢出问题
+        let (tx_local_notify, rx_local_notify) = mpsc::unbounded::<LocalNotify>();
+        let local_notify_fut = {
+            let app = app.clone();
+            let requests = requests.clone();
+            let tx = tx.clone();
+            let abort_handle = abort_handle.clone();
+            let tx_local_notify = tx_local_notify.clone();
+            async move {
+                rx_local_notify
+                    .for_each_concurrent(4, |notify| {
+                        async {
+                            if let Some((service_name, init, service)) =
+                                app.services.get(notify.to.to_u32() as usize)
+                            {
+                                if init.load(Ordering::Relaxed) {
+                                    service
+                                        .notify(
+                                            &NodeContext {
+                                                from: Some(notify.from.to_global(node_id)),
+                                                service_name,
+                                                node_id,
+                                                local_service_id: notify.to,
+                                                app: &app,
+                                                tx: tx.clone(),
+                                                tx_local_notify: tx_local_notify.clone(),
+                                                requests: requests.clone(),
+                                                abort_handle: abort_handle.clone(),
+                                            },
+                                            notify.request,
+                                        )
+                                        .await;
+                                }
+                            }
+                        }
+                    })
+                    .await;
+            }
+        };
+        let (abort_ln_handle, abort_ln_registration) = AbortHandle::new_pair();
+        let local_notify_handle =
+            task::spawn(Abortable::new(local_notify_fut, abort_ln_registration));
+
+        // 处理消息
         let recv_handle = task::spawn({
             let app = app.clone();
             let requests = requests.clone();
             let tx = tx.clone();
+            let tx_local_notify = tx_local_notify.clone();
             let abort_handle = abort_handle.clone();
             Abortable::new(
                 async move {
@@ -129,6 +180,7 @@ impl NodeBuilder {
                                     let app = app.clone();
                                     let abort_handle = abort_handle.clone();
                                     let mut tx = tx.clone();
+                                    let tx_local_notify = tx_local_notify.clone();
                                     let requests = requests.clone();
 
                                     async move {
@@ -145,6 +197,8 @@ impl NodeBuilder {
                                                             local_service_id: to,
                                                             app: &app,
                                                             tx: tx.clone(),
+                                                            tx_local_notify: tx_local_notify
+                                                                .clone(),
                                                             requests,
                                                             abort_handle,
                                                         },
@@ -195,6 +249,7 @@ impl NodeBuilder {
                                     let app = app.clone();
                                     let abort_handle = abort_handle.clone();
                                     let tx = tx.clone();
+                                    let tx_local_notify = tx_local_notify.clone();
                                     let requests = requests.clone();
 
                                     async move {
@@ -212,6 +267,8 @@ impl NodeBuilder {
                                                                 local_service_id: *lid,
                                                                 app: &app,
                                                                 tx: tx.clone(),
+                                                                tx_local_notify: tx_local_notify
+                                                                    .clone(),
                                                                 requests,
                                                                 abort_handle,
                                                             },
@@ -229,6 +286,7 @@ impl NodeBuilder {
                                     let app = app.clone();
                                     let abort_handle = abort_handle.clone();
                                     let tx = tx.clone();
+                                    let tx_local_notify = tx_local_notify.clone();
                                     let requests = requests.clone();
 
                                     async move {
@@ -247,6 +305,7 @@ impl NodeBuilder {
                                                                 ),
                                                                 app: &app,
                                                                 tx: tx.clone(),
+                                                                tx_local_notify: tx_local_notify.clone(),
                                                                 requests: requests.clone(),
                                                                 abort_handle: abort_handle.clone(),
                                                             },
@@ -278,6 +337,7 @@ impl NodeBuilder {
                     local_service_id: lid,
                     app: &app,
                     tx: tx.clone(),
+                    tx_local_notify: tx_local_notify.clone(),
                     requests: requests.clone(),
                     abort_handle: abort_handle.clone(),
                 })
@@ -296,6 +356,9 @@ impl NodeBuilder {
         recv_handle.await.ok();
         tx.send(Message::UnregisterNode).await.ok();
         drop(tx);
+        drop(tx_local_notify);
+        abort_ln_handle.abort();
+        local_notify_handle.await.ok();
         send_handle.await;
         Ok(())
     }

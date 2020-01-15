@@ -1,4 +1,4 @@
-use potatonet_node::*;
+use potatonet::node::*;
 use std::sync::atomic::{AtomicI32, Ordering};
 
 #[derive(Default)]

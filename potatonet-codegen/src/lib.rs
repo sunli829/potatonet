@@ -504,7 +504,7 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
             // 客户端代码
             pub struct #client_ty<'a, C> {
                 ctx: &'a C,
-                service_name: std::borrow::Cow<'static, str>,
+                service_name: std::borrow::Cow<'a, str>,
             }
 
             impl<'a, C: potatonet_node::Context> #client_ty<'a, C> {
@@ -512,12 +512,9 @@ pub fn service(_args: TokenStream, input: TokenStream) -> TokenStream {
                     Self { ctx, service_name: std::borrow::Cow::Borrowed(#self_name) }
                 }
 
-                pub fn with_name<N: Into<String>>(ctx: &'a C, name: N) -> Self {
-                    Self { ctx, service_name: std::borrow::Cow::Owned(name.into()) }
-                }
-
-                pub fn with_static_name(ctx: &'a C, name: &'static str) -> Self {
-                    Self { ctx, service_name: std::borrow::Cow::Borrowed(name) }
+                pub fn with_name<N>(ctx: &'a C, name: N) -> Self
+                where N: Into<std::borrow::Cow<'a, str>> {
+                    Self { ctx, service_name: name.into() }
                 }
 
                 #(#client_methods)*
