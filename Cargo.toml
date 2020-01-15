@@ -31,9 +31,11 @@ potatonet-node = { version = "0.3.1", path = "potatonet-node", optional = true }
 potatonet-service-logger = { version = "0.3.1", path = "potatonet-service-logger", optional = true }
 serde = "1.0.104"
 async-std = { version = "1.4.0", features = ["attributes"] }
+futures = "0.3.1"
 
 [dev-dependencies]
 linefeed = "0.6.0"
+clap = "2.33.0"
 
 [workspace]
 members = [
