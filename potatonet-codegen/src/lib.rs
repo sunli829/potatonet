@@ -4,7 +4,11 @@ use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::quote;
 use syn::spanned::Spanned;
-use syn::{parse_macro_input, AngleBracketedGenericArguments, Attribute, Block, Error, FnArg, GenericArgument, ImplItem, ImplItemMethod, ItemImpl, LitStr, Meta, NestedMeta, Pat, PatIdent, PathArguments, Result, ReturnType, Type, TypePath, DeriveInput};
+use syn::{
+    parse_macro_input, AngleBracketedGenericArguments, Attribute, Block, DeriveInput, Error, FnArg,
+    GenericArgument, ImplItem, ImplItemMethod, ItemImpl, LitStr, Meta, NestedMeta, Pat, PatIdent,
+    PathArguments, Result, ReturnType, Type, TypePath,
+};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum MethodType {
@@ -125,10 +129,8 @@ fn parse_method(info: MethodInfo, method: &ImplItemMethod) -> Result<Method> {
                     }
 
                     if let Type::Path(path) = ty.elem.as_ref() {
-                        if path.path.segments.len() == 1
-                            && path.path.segments[0].ident.to_string() == "NodeContext"
-                        {
-                            let seg = &path.path.segments[0];
+                        if path.path.segments.last().unwrap().ident.to_string() == "NodeContext" {
+                            let seg = &path.path.segments.last().unwrap();
                             if let PathArguments::AngleBracketed(angle_args) = &seg.arguments {
                                 if angle_args.args.len() != 1 {
                                     // context的泛型参数错误

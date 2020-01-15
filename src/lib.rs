@@ -31,3 +31,6 @@ pub mod services {
         pub use potatonet_service_logger::*;
     }
 }
+
+#[cfg(feature = "service-logger")]
+pub use potatonet_service_logger::{debug, error, info, log, msg_and_kvs, trace, warn};

@@ -35,13 +35,15 @@ impl Level {
     }
 }
 
+pub type KvsHashMap = HashMap<String, Value>;
+
 #[message]
 pub struct Item {
     pub time: DateTime<Utc>,
     pub service: String,
     pub level: Level,
     pub message: String,
-    pub kvs: Option<HashMap<String, Value>>,
+    pub kvs: Option<KvsHashMap>,
 }
 
 /// 日志后台
