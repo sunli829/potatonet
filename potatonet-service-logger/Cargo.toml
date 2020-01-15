@@ -2,6 +2,7 @@
 name = "potatonet-service-logger"
 version = "0.3.0"
 authors = ["Sunli <scott_s829@163.com>"]
+description = "PotatoNet is a lightweight microservices framework."
 edition = "2018"
 publish = true
 license = "MIT"
