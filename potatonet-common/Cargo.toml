@@ -1,6 +1,6 @@
 [package]
 name = "potatonet-common"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Sunli <scott_s829@163.com>"]
 description = "PotatoNet is a lightweight microservices framework."
 edition = "2018"

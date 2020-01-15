@@ -1,6 +1,6 @@
 [package]
 name = "potatonet"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Sunli <scott_s829@163.com>"]
 description = "PotatoNet is a lightweight microservices framework."
 edition = "2018"
@@ -23,12 +23,12 @@ node = ["potatonet-node"]
 service-logger = ["potatonet-service-logger"]
 
 [dependencies]
-potatonet-common = { version = "0.3.1", path = "potatonet-common" }
-potatonet-bus = { version = "0.3.1", path = "potatonet-bus", optional = true }
-potatonet-client = { version = "0.3.1", path = "potatonet-client", optional = true }
-potatonet-codegen = { version = "0.3.1", path = "potatonet-codegen", optional = true }
-potatonet-node = { version = "0.3.1", path = "potatonet-node", optional = true }
-potatonet-service-logger = { version = "0.3.1", path = "potatonet-service-logger", optional = true }
+potatonet-common = { version = "0.3.2", path = "potatonet-common" }
+potatonet-bus = { version = "0.3.2", path = "potatonet-bus", optional = true }
+potatonet-client = { version = "0.3.2", path = "potatonet-client", optional = true }
+potatonet-codegen = { version = "0.3.2", path = "potatonet-codegen", optional = true }
+potatonet-node = { version = "0.3.2", path = "potatonet-node", optional = true }
+potatonet-service-logger = { version = "0.3.2", path = "potatonet-service-logger", optional = true }
 serde = "1.0.104"
 async-std = { version = "1.4.0", features = ["attributes"] }
 futures = "0.3.1"
