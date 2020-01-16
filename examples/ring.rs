@@ -55,6 +55,12 @@ async fn main() {
                 .index(1)
                 .help("stop value")
                 .default_value("100000"),
+        )
+        .arg(
+            clap::Arg::with_name("concurrency")
+                .short("o")
+                .help("number of multiple requests to make at a time")
+                .default_value("1"),
         );
     let matches = clap_app.get_matches();
 
@@ -68,6 +74,7 @@ async fn main() {
     let nodes_count = matches.value_of("nodes").unwrap().parse().unwrap();
     let services_count = matches.value_of("services").unwrap().parse().unwrap();
     let stop_value = matches.value_of("value").unwrap().parse().unwrap();
+    let concurrency = matches.value_of("concurrency").unwrap().parse().unwrap();
     let id_count = nodes_count * services_count;
 
     for _ in 0..nodes_count {
@@ -103,20 +110,25 @@ async fn main() {
     let node_client = NodeClient::with_name(&client, "node0");
 
     let start = Instant::now();
-    node_client
-        .send(Msg {
-            current: 0,
-            stop: stop_value,
-        })
-        .await;
-    rx.next().await;
+    for _ in 0..concurrency {
+        node_client
+            .send(Msg {
+                current: 0,
+                stop: stop_value,
+            })
+            .await;
+    }
+    for _ in 0..concurrency {
+        rx.next().await;
+    }
 
     println!("nodes: {}", nodes_count);
     println!("services: {}", services_count);
     println!("stop value: {}", stop_value);
+    println!("concurrency: {}", concurrency);
     println!(
         "QPS: {:.3}",
-        stop_value as f32 / start.elapsed().as_secs_f32()
+        (stop_value * concurrency) as f32 / start.elapsed().as_secs_f32()
     );
     println!("elapsed: {}s", start.elapsed().as_secs_f32());
     println!();

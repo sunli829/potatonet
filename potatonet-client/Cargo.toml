@@ -1,6 +1,6 @@
 [package]
 name = "potatonet-client"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Sunli <scott_s829@163.com>"]
 description = "PotatoNet is a lightweight microservices framework."
 edition = "2018"
@@ -12,7 +12,7 @@ keywords = ["rpc", "network", "macroservice"]
 categories = ["network-programming"]
 
 [dependencies]
-potatonet-common = { version = "0.3.2", path = "../potatonet-common" }
+potatonet-common = { version = "0.3.3", path = "../potatonet-common" }
 async-std = { version = "1.4.0", features = ["attributes"] }
 async-trait = "0.1.22"
 serde = "1.0.104"

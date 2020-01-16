@@ -1,6 +1,6 @@
 [package]
 name = "potatonet-codegen"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["sunli"]
 description = "PotatoNet is a lightweight microservices framework."
 edition = "2018"
