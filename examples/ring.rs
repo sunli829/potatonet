@@ -114,6 +114,10 @@ async fn main() {
     println!("nodes: {}", nodes_count);
     println!("services: {}", services_count);
     println!("stop value: {}", stop_value);
+    println!(
+        "QPS: {:.3}",
+        stop_value as f32 / start.elapsed().as_secs_f32()
+    );
     println!("elapsed: {}s", start.elapsed().as_secs_f32());
     println!();
 }

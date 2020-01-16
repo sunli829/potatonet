@@ -11,7 +11,7 @@ use futures::prelude::*;
 use potatonet_common::{bus_message, Event, NodeId, ServiceId};
 use slab::Slab;
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -33,7 +33,6 @@ struct Bus {
     sessions: Slab<Session>,
     nodes: Slab<usize>,
     services: HashMap<String, Vec<ServiceId>>,
-    services_set: HashSet<ServiceId>,
     pending_requests: Slab<(u32, usize)>,
 }
 
@@ -154,7 +153,6 @@ pub async fn run<A: ToSocketAddrs>(addr: A) -> Result<()> {
                                     .entry(name)
                                     .and_modify(|ids| ids.push(service_id))
                                     .or_insert_with(|| vec![service_id]);
-                                bus.services_set.insert(service_id);
                             }
                         }
 
@@ -165,7 +163,6 @@ pub async fn run<A: ToSocketAddrs>(addr: A) -> Result<()> {
                             let session = bus.sessions.get_mut(session_id).unwrap();
                             if let Session::Node { id: node_id, .. } = session {
                                 let service_id = id.to_global(*node_id);
-                                bus.services_set.remove(&service_id);
                                 for (_, ids) in &mut bus.services {
                                     if let Some(pos) = ids.iter().position(|x| *x == service_id) {
                                         ids.remove(pos);
@@ -297,41 +294,43 @@ pub async fn run<A: ToSocketAddrs>(addr: A) -> Result<()> {
                             // 通知其它节点的指定服务
                             let bus = bus.lock().await;
                             let session = bus.sessions.get(session_id).unwrap();
-                            let to = {
-                                let current_node_id = match session {
-                                    Session::Node { id, .. } => Some(*id),
-                                    _ => None,
-                                };
-                                bus.nodes
-                                    .iter()
-                                    .filter(|(id, _)| match current_node_id {
-                                        Some(current_node_id) => {
-                                            current_node_id.to_u8() as usize != *id
-                                        }
-                                        _ => true,
-                                    })
-                                    .map(|(_, session_id)| {
-                                        match bus.sessions.get(*session_id).unwrap() {
-                                            Session::Client { tx } => tx.clone(),
-                                            Session::Node { tx, .. } => tx.clone(),
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()
+                            let current_node_id = match session {
+                                Session::Node { id, .. } => Some(*id),
+                                _ => None,
                             };
-
                             let from = match (session, from) {
                                 (Session::Node { id, .. }, Some(lid)) => Some(lid.to_global(*id)),
                                 _ => None,
                             };
-                            for mut tx in to {
-                                tx.send(bus_message::Message::Notify {
-                                    from,
-                                    to_service: to_service.clone(),
-                                    method: method.clone(),
-                                    data: data.clone(),
-                                })
-                                .await
-                                .ok();
+
+                            if let Some(services) = bus.services.get(&to_service) {
+                                for service_id in services {
+                                    if let Some(current_id) = &current_node_id {
+                                        if *current_id == service_id.node_id() {
+                                            // 不通知来源节点
+                                            continue;
+                                        }
+                                    }
+
+                                    if let Some(to_session_id) =
+                                        bus.nodes.get(service_id.node_id().to_u8() as usize)
+                                    {
+                                        let mut tx = match bus.sessions.get(*to_session_id).unwrap()
+                                        {
+                                            Session::Client { tx } => tx.clone(),
+                                            Session::Node { tx, .. } => tx.clone(),
+                                        };
+
+                                        tx.send(bus_message::Message::Notify {
+                                            from,
+                                            to_service: to_service.clone(),
+                                            method: method.clone(),
+                                            data: data.clone(),
+                                        })
+                                        .await
+                                        .ok();
+                                    }
+                                }
                             }
                         }
                         _ => return,
