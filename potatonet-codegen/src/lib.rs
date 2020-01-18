@@ -5,9 +5,9 @@ use proc_macro2::Ident;
 use quote::quote;
 use syn::spanned::Spanned;
 use syn::{
-    parse_macro_input, AngleBracketedGenericArguments, Attribute, Block, DeriveInput, Error, FnArg,
-    GenericArgument, ImplItem, ImplItemMethod, ItemImpl, LitStr, Meta, NestedMeta, Pat, PatIdent,
-    PathArguments, Result, ReturnType, Type, TypePath,
+    parse_macro_input, AngleBracketedGenericArguments, Attribute, AttributeArgs, Block,
+    DeriveInput, Error, FnArg, GenericArgument, ImplItem, ImplItemMethod, ItemImpl, LitStr, Meta,
+    NestedMeta, Pat, PatIdent, PathArguments, Result, ReturnType, Type, TypePath,
 };
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -573,6 +573,44 @@ pub fn message(_args: TokenStream, input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #[derive(potatonet::serde_derive::Serialize, potatonet::serde_derive::Deserialize)]
         #input
+    };
+    expanded.into()
+}
+
+#[proc_macro_attribute]
+pub fn topic(args: TokenStream, input: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as AttributeArgs);
+    let mut name = None;
+
+    for arg in args {
+        match arg {
+            NestedMeta::Meta(Meta::NameValue(nv)) => {
+                if nv.path.is_ident("name") {
+                    if let syn::Lit::Str(lit) = nv.lit {
+                        name = Some(lit.value());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = name.unwrap_or_else(|| input.ident.to_string());
+    let ident = &input.ident;
+    let msg_type = quote! {
+        #[derive(potatonet::serde_derive::Serialize, potatonet::serde_derive::Deserialize)]
+        #input
+
+        impl Topic for #ident {
+            fn name() -> &'static str {
+                #name
+            }
+        }
+    };
+
+    let expanded = quote! {
+        #msg_type
     };
     expanded.into()
 }

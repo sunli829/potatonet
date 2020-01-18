@@ -1,6 +1,6 @@
 use crate::NodeContext;
 use bytes::Bytes;
-use potatonet_common::{Error, Event, Request, Response, Result};
+use potatonet_common::{Error, Request, Response, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -8,13 +8,13 @@ use serde::Serialize;
 #[async_trait::async_trait]
 pub trait Service: Sync + Send {
     /// 请求类型
-    type Req: Serialize + DeserializeOwned + Send + Sync;
+    type Req: Serialize + DeserializeOwned + Send + 'static;
 
     /// 响应类型
-    type Rep: Serialize + DeserializeOwned + Send + Sync;
+    type Rep: Serialize + DeserializeOwned + Send + 'static;
 
     /// 通知类型
-    type Notify: Serialize + DeserializeOwned + Send + Sync;
+    type Notify: Serialize + DeserializeOwned + Send + 'static;
 
     /// 开始服务
     #[allow(unused_variables)]
@@ -39,10 +39,6 @@ pub trait Service: Sync + Send {
     /// 通知
     #[allow(unused_variables)]
     async fn notify(&self, ctx: &NodeContext<'_>, request: Request<Self::Notify>) {}
-
-    /// 系统事件
-    #[allow(unused_variables)]
-    async fn event(&self, ctx: &NodeContext<'_>, event: &Event) {}
 }
 
 /// 命名服务
@@ -84,9 +80,5 @@ where
 
     async fn notify(&self, ctx: &NodeContext<'_>, request: Request<Self::Req>) {
         self.0.notify(ctx, Request::from_bytes(request)).await;
-    }
-
-    async fn event(&self, ctx: &NodeContext<'_>, event: &Event) {
-        self.0.event(ctx, event).await;
     }
 }

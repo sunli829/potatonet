@@ -1,4 +1,4 @@
-use crate::{Event, LocalServiceId, NodeId, ServiceId};
+use crate::{LocalServiceId, NodeId, ServiceId};
 use anyhow::Result;
 use async_std::net::TcpStream;
 use bytes::Bytes;
@@ -6,6 +6,8 @@ use futures::channel::mpsc::{Receiver, Sender};
 use futures::prelude::*;
 use std::io::Cursor;
 use std::sync::Arc;
+
+const MAX_DATA_SIZE: usize = 1024 * 1024;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Message {
@@ -49,7 +51,7 @@ pub enum Message {
     },
 
     /// 客户端发送通知
-    SendNotify {
+    Notify {
         from: LocalServiceId,
         to_service: String,
         method: u32,
@@ -57,7 +59,7 @@ pub enum Message {
     },
 
     /// 客户端给指定服务发送通知
-    SendNotifyTo {
+    NotifyTo {
         from: LocalServiceId,
         to: ServiceId,
         method: u32,
@@ -65,7 +67,7 @@ pub enum Message {
     },
 
     /// 服务端发送通知
-    Notify {
+    XNotify {
         from: ServiceId,
         to_service: String,
         method: u32,
@@ -73,21 +75,34 @@ pub enum Message {
     },
 
     /// 服务端给指定服务发送通知
-    NotifyTo {
+    XNotifyTo {
         from: ServiceId,
         to: LocalServiceId,
         method: u32,
         data: Bytes,
     },
 
-    /// 系统事件
-    Event { event: Event },
+    /// 客户端订阅消息请求
+    Subscribe { topic: String },
+
+    /// 客户端取消订阅消息请求
+    Unsubscribe { topic: String },
+
+    /// 客户端发布消息
+    Publish { topic: String, data: Bytes },
+
+    /// 服务器发布消息
+    XPublish { topic: String, data: Bytes },
 }
 
 async fn read_message<R: AsyncRead + Unpin>(mut r: R, buf: &mut Vec<u8>) -> Result<Message> {
     let mut len = [0u8; 4];
     r.read_exact(&mut len).await?;
-    buf.resize(u32::from_le_bytes(len) as usize, 0);
+    let data_size = u32::from_le_bytes(len) as usize;
+    if data_size > MAX_DATA_SIZE {
+        bail!("data length exceeding the limit");
+    }
+    buf.resize(data_size, 0);
     r.read_exact(buf).await?;
     let msg: Message = rmp_serde::from_read(Cursor::new(&buf))?;
     Ok(msg)
@@ -103,6 +118,11 @@ async fn write_message<W: AsyncWrite + Unpin>(
     w.write(&(buf.len() as u32).to_le_bytes()).await?;
     w.write(&buf).await?;
     Ok(())
+}
+
+pub async fn read_one_message<R: AsyncRead + Unpin>(r: R) -> Result<Message> {
+    let mut buf = Vec::new();
+    read_message(r, &mut buf).await
 }
 
 pub async fn read_messages(stream: Arc<TcpStream>, mut tx: Sender<Message>) {

@@ -20,7 +20,7 @@ pub mod client {
 }
 
 #[cfg(feature = "codegen")]
-pub use potatonet_codegen::{message, service};
+pub use potatonet_codegen::{message, service, topic};
 
 #[cfg(feature = "node")]
 /// 节点

@@ -1,6 +1,13 @@
+#![recursion_limit = "512"]
+
+mod requests;
+mod subscribes;
+
 #[macro_use]
 extern crate log;
 
+use crate::requests::Requests;
+use crate::subscribes::Subscribes;
 use anyhow::Result;
 use async_std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use async_std::stream;
@@ -9,29 +16,42 @@ use futures::channel::mpsc::{channel, Sender};
 use futures::lock::Mutex;
 use futures::prelude::*;
 use futures::select;
-use potatonet_common::{bus_message, Event, NodeId, ServiceId};
+use potatonet_common::{bus_message, LocalServiceId, NodeId, ServiceId};
 use slab::Slab;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// 节点
 struct Node {
     /// 节点提供的服务
-    services: HashSet<String>,
+    services: HashMap<LocalServiceId, String>,
 
     /// 上次心跳时间
     hb: Instant,
+
+    /// 主动断开节点连接通知通道
+    tx_close: Sender<()>,
 
     /// 发送数据通道
     tx: Sender<bus_message::Message>,
 }
 
+/// 消息总线数据
 #[derive(Default)]
 struct Bus {
+    /// 节点集合
     nodes: Slab<Node>,
+
+    /// 按服务名索引的服务id
     services: HashMap<String, Vec<ServiceId>>,
-    pending_requests: Slab<(u32, NodeId)>,
+
+    /// 未完成的请求
+    /// 如果5秒内未收到节点发来的响应，则从该表删除
+    pending_requests: Requests,
+
+    /// 订阅信息
+    subscribes: Subscribes,
 }
 
 impl Bus {
@@ -44,21 +64,14 @@ impl Bus {
         }
     }
 
-    fn create_node(&mut self, tx: Sender<bus_message::Message>) -> NodeId {
+    fn create_node(&mut self, tx: Sender<bus_message::Message>, tx_close: Sender<()>) -> NodeId {
         let id = self.nodes.insert(Node {
             services: Default::default(),
             hb: Instant::now(),
+            tx_close,
             tx,
         });
         NodeId(id as u32)
-    }
-
-    fn node(&self, id: NodeId) -> Option<&Node> {
-        self.nodes.get(id.0 as usize)
-    }
-
-    fn node_mut(&mut self, id: NodeId) -> Option<&mut Node> {
-        self.nodes.get_mut(id.0 as usize)
     }
 }
 
@@ -86,20 +99,23 @@ async fn process_incoming_msg(bus: Arc<Mutex<Bus>>, node_id: NodeId, msg: bus_me
         // ping消息
         bus_message::Message::Ping => {
             trace!("[{}/MSG:PING]", node_id);
-            bus.lock().await.node_mut(node_id).unwrap().hb = Instant::now();
+            if let Some(node) = bus.lock().await.nodes.get_mut(node_id.0 as usize) {
+                node.hb = Instant::now();
+            }
         }
 
         // 注册服务
         bus_message::Message::RegisterService { name, id } => {
             trace!("[{}/MSG:REGISTER_SERVICE] name={} id={}", node_id, name, id);
             let mut bus = bus.lock().await;
-            let node = bus.node_mut(node_id).unwrap();
-            let service_id = id.to_global(node_id);
-            node.services.insert(name.clone());
-            bus.services
-                .entry(name)
-                .and_modify(|ids| ids.push(service_id))
-                .or_insert_with(|| vec![service_id]);
+            if let Some(node) = bus.nodes.get_mut(node_id.0 as usize) {
+                let service_id = id.to_global(node_id);
+                node.services.insert(id, name.clone());
+                bus.services
+                    .entry(name)
+                    .and_modify(|ids| ids.push(service_id))
+                    .or_insert_with(|| vec![service_id]);
+            }
         }
 
         // 注销服务
@@ -107,16 +123,14 @@ async fn process_incoming_msg(bus: Arc<Mutex<Bus>>, node_id: NodeId, msg: bus_me
             trace!("[{}/MSG:UNREGISTER_SERVICE] id={}", node_id, id);
             let mut bus = bus.lock().await;
             let service_id = id.to_global(node_id);
-            let mut remove_name = None;
-            for (name, ids) in &mut bus.services {
+            for (_, ids) in &mut bus.services {
                 if let Some(pos) = ids.iter().position(|x| *x == service_id) {
                     ids.remove(pos);
-                    remove_name = Some(name.clone());
                     break;
                 }
             }
-            if let Some(name) = remove_name {
-                bus.node_mut(node_id).unwrap().services.remove(&name);
+            if let Some(node) = bus.nodes.get_mut(node_id.0 as usize) {
+                node.services.remove(&id);
             }
         }
 
@@ -137,63 +151,68 @@ async fn process_incoming_msg(bus: Arc<Mutex<Bus>>, node_id: NodeId, msg: bus_me
                 method
             );
             let from = from.to_global(node_id);
-            let mut bus = bus.lock().await;
-            let to = match bus.find_service(&to_service) {
+            let mut bus_inner = bus.lock().await;
+            let to = match bus_inner.find_service(&to_service) {
                 Some(to) => to,
                 None => {
                     // 服务不存在
                     let err_msg = format!("service '{}' not exists", to_service);
-                    bus.node(node_id)
-                        .unwrap()
-                        .tx
-                        .clone()
-                        .send(bus_message::Message::Rep {
+                    if let Some(node) = bus_inner.nodes.get_mut(node_id.0 as usize) {
+                        if let Err(_) = node.tx.try_send(bus_message::Message::Rep {
                             seq,
                             result: Err(err_msg),
-                        })
-                        .await
-                        .ok();
+                        }) {
+                            // 数据发送失败，断开连接
+                            node.tx_close.try_send(()).ok();
+                        }
+                    }
                     return;
                 }
             };
-            let new_seq = bus.pending_requests.insert((seq, node_id));
-            let to_node = bus.node(to.node_id).unwrap();
-            to_node
-                .tx
-                .clone()
-                .send(bus_message::Message::XReq {
+            let new_seq = bus_inner.pending_requests.add(seq, node_id);
+            if let Some(to_node) = bus_inner.nodes.get_mut(to.node_id.0 as usize) {
+                if let Err(_) = to_node.tx.try_send(bus_message::Message::XReq {
                     from,
                     to: to.local_service_id,
                     seq: new_seq as u32,
                     method,
                     data,
-                })
-                .await
-                .ok();
+                }) {
+                    // 数据发送失败，断开连接
+                    to_node.tx_close.try_send(()).ok();
+                }
+            }
+
+            // 5秒未收到响应则删除
+            task::spawn({
+                let bus = bus.clone();
+                async move {
+                    task::sleep(Duration::from_secs(5)).await;
+                    let mut bus = bus.lock().await;
+                    bus.pending_requests.remove(new_seq);
+                }
+            });
         }
 
         // 响应
         bus_message::Message::Rep { seq, result } => {
             trace!("[{}/MSG:RESPONSE] seq={}", node_id, seq);
             let mut bus = bus.lock().await;
-            if let Some((origin_seq, to_node_id)) = bus.pending_requests.get(seq as usize).copied()
-            {
-                bus.pending_requests.remove(seq as usize);
-                if let Some(node) = bus.node(to_node_id) {
-                    node.tx
-                        .clone()
-                        .send(bus_message::Message::Rep {
-                            seq: origin_seq,
-                            result,
-                        })
-                        .await
-                        .ok();
+            if let Some((origin_seq, to_node_id)) = bus.pending_requests.remove(seq) {
+                if let Some(node) = bus.nodes.get_mut(to_node_id.0 as usize) {
+                    if let Err(_) = node.tx.try_send(bus_message::Message::Rep {
+                        seq: origin_seq,
+                        result,
+                    }) {
+                        // 数据发送失败，断开连接
+                        node.tx_close.try_send(()).ok();
+                    }
                 }
             };
         }
 
         // 发送通知
-        bus_message::Message::SendNotify {
+        bus_message::Message::Notify {
             from,
             to_service,
             method,
@@ -208,7 +227,8 @@ async fn process_incoming_msg(bus: Arc<Mutex<Bus>>, node_id: NodeId, msg: bus_me
             );
 
             // 通知其它节点的指定服务
-            let bus = bus.lock().await;
+            let mut bus = bus.lock().await;
+            let bus = &mut *bus;
 
             if let Some(services) = bus.services.get(&to_service) {
                 for service_id in services {
@@ -217,24 +237,22 @@ async fn process_incoming_msg(bus: Arc<Mutex<Bus>>, node_id: NodeId, msg: bus_me
                         continue;
                     }
 
-                    let to_node = bus.node(service_id.node_id).unwrap();
-                    to_node
-                        .tx
-                        .clone()
-                        .send(bus_message::Message::Notify {
-                            from: from.to_global(node_id),
-                            to_service: to_service.clone(),
-                            method,
-                            data: data.clone(),
-                        })
-                        .await
-                        .ok();
+                    let to_node = bus.nodes.get_mut(service_id.node_id.0 as usize).unwrap();
+                    if let Err(_) = to_node.tx.try_send(bus_message::Message::XNotify {
+                        from: from.to_global(node_id),
+                        to_service: to_service.clone(),
+                        method,
+                        data: data.clone(),
+                    }) {
+                        // 数据发送失败，断开连接
+                        to_node.tx_close.try_send(()).ok();
+                    }
                 }
             }
         }
 
         // 给指定服务发送通知
-        bus_message::Message::SendNotifyTo {
+        bus_message::Message::NotifyTo {
             from,
             to,
             method,
@@ -249,20 +267,52 @@ async fn process_incoming_msg(bus: Arc<Mutex<Bus>>, node_id: NodeId, msg: bus_me
             );
 
             // 通知其它节点的指定服务
-            let bus = bus.lock().await;
-            if let Some(node) = bus.node(to.node_id) {
-                node.tx
-                    .clone()
-                    .send(bus_message::Message::NotifyTo {
-                        from: from.to_global(node_id),
-                        to: to.local_service_id,
-                        method: method,
-                        data: data.clone(),
-                    })
-                    .await
-                    .ok();
+            let mut bus = bus.lock().await;
+            if let Some(node) = bus.nodes.get_mut(to.node_id.0 as usize) {
+                if let Err(_) = node.tx.try_send(bus_message::Message::XNotifyTo {
+                    from: from.to_global(node_id),
+                    to: to.local_service_id,
+                    method: method,
+                    data: data.clone(),
+                }) {
+                    // 数据发送失败，断开连接
+                    node.tx_close.try_send(()).ok();
+                }
             }
         }
+
+        // 订阅
+        bus_message::Message::Subscribe { topic } => {
+            trace!("[{}/MSG:SUBSCRIBE] topic={}", node_id, topic);
+            let mut bus = bus.lock().await;
+            bus.subscribes.subscribe(topic, node_id);
+        }
+
+        // 取消订阅
+        bus_message::Message::Unsubscribe { topic } => {
+            trace!("[{}/MSG:UNSUBSCRIBE] topic={}", node_id, topic);
+            let mut bus = bus.lock().await;
+            bus.subscribes.unsubscribe(topic, node_id);
+        }
+
+        // 发布消息
+        bus_message::Message::Publish { topic, data } => {
+            trace!("[{}/MSG:PUBLISH] topic={}", node_id, topic);
+            let mut bus = bus.lock().await;
+            let bus = &mut *bus;
+            for to_node_id in bus.subscribes.query(&topic) {
+                if let Some(to_node) = bus.nodes.get_mut(to_node_id.0 as usize) {
+                    if let Err(_) = to_node.tx.try_send(bus_message::Message::XPublish {
+                        topic: topic.clone(),
+                        data: data.clone(),
+                    }) {
+                        // 数据发送失败，断开连接
+                        to_node.tx_close.try_send(()).ok();
+                    }
+                }
+            }
+        }
+
         _ => {}
     }
 }
@@ -270,9 +320,13 @@ async fn process_incoming_msg(bus: Arc<Mutex<Bus>>, node_id: NodeId, msg: bus_me
 /// 客户端消息处理
 async fn client_process(bus: Arc<Mutex<Bus>>, stream: TcpStream) {
     let stream = Arc::new(stream);
-    let (tx_incoming_msg, mut rx_incoming_msg) = channel(16);
-    let (mut tx_outgoing_msg, rx_outgoing_msg) = channel(16);
-    let node_id = bus.lock().await.create_node(tx_outgoing_msg.clone());
+    let (tx_close, mut rx_close) = channel(1);
+    let (tx_incoming_msg, mut rx_incoming_msg) = channel(64);
+    let (mut tx_outgoing_msg, rx_outgoing_msg) = channel(64);
+    let node_id = bus
+        .lock()
+        .await
+        .create_node(tx_outgoing_msg.clone(), tx_close);
 
     // 接收消息任务
     // 当心跳超时后，通过abort_handle来关闭消息接收任务
@@ -286,21 +340,9 @@ async fn client_process(bus: Arc<Mutex<Bus>>, stream: TcpStream) {
     let writer_handle = task::spawn(writer_task);
     trace!("[{}/CONNECTED]", node_id);
 
-    // 广播节点上线事件
-    for (_, node) in &bus.lock().await.nodes {
-        node.tx
-            .clone()
-            .send(bus_message::Message::Event {
-                event: Event::NodeUp { id: node_id },
-            })
-            .await
-            .ok();
-    }
-
     // 发送欢迎消息
     tx_outgoing_msg
-        .send(bus_message::Message::Hello(node_id))
-        .await
+        .try_send(bus_message::Message::Hello(node_id))
         .ok();
     drop(tx_outgoing_msg);
 
@@ -309,8 +351,12 @@ async fn client_process(bus: Arc<Mutex<Bus>>, stream: TcpStream) {
 
     loop {
         select! {
+            _ = rx_close.next() => {
+                // 主动断开连接
+                break;
+            }
             _ = check_hb.next() => {
-                if let Some(node) = bus.lock().await.node(node_id) {
+                if let Some(node) = bus.lock().await.nodes.get(node_id.0 as usize) {
                     if node.hb.elapsed() > Duration::from_secs(30) {
                         // 心跳超时
                         trace!("[{}/MSG:HEARTBEAT_TIMEOUT]", node_id);
@@ -327,9 +373,11 @@ async fn client_process(bus: Arc<Mutex<Bus>>, stream: TcpStream) {
                     process_incoming_msg(bus.clone(), node_id, msg).await;
                     if exit {
                         // 客户端退出
+                        break;
                     }
                 } else {
                     // 连接已断开
+                    trace!("client connection close. node_id={}", node_id);
                     break;
                 }
             }
@@ -338,21 +386,11 @@ async fn client_process(bus: Arc<Mutex<Bus>>, stream: TcpStream) {
 
     // 节点下线
     let mut bus = bus.lock().await;
+    bus.subscribes.remove_node(node_id);
     for (_, ids) in &mut bus.services {
         ids.retain(|id| id.node_id != node_id);
     }
     bus.nodes.remove(node_id.0 as usize);
-
-    // 广播节点下线事件
-    for (_, node) in &bus.nodes {
-        node.tx
-            .clone()
-            .send(bus_message::Message::Event {
-                event: Event::NodeDown { id: node_id },
-            })
-            .await
-            .ok();
-    }
 
     // 等待读写任务关闭
     abort_reader.abort();

@@ -1,9 +1,11 @@
 use potatonet::node::*;
+use potatonet::*;
 use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Arc;
 
 #[derive(Default)]
 pub struct TestService {
-    sum: AtomicI32,
+    sum: Arc<AtomicI32>,
 }
 
 #[message]
@@ -11,10 +13,24 @@ pub struct CustomMessage {
     pub value: i32,
 }
 
+#[topic]
+pub struct A {
+    pub n: i32,
+}
+
 #[service]
 impl TestService {
-    async fn start(&self, _ctx: &NodeContext<'_>) {
+    async fn start(&self, ctx: &NodeContext<'_>) {
         self.sum.store(100, Ordering::Relaxed);
+
+        let sum = self.sum.clone();
+        ctx.subscribe(move |_, msg: A| {
+            let sum = sum.clone();
+            async move {
+                sum.fetch_add(msg.n, Ordering::Relaxed);
+            }
+        })
+        .await;
     }
 
     async fn stop(&self, _ctx: &NodeContext<'_>) {

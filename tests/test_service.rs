@@ -3,6 +3,7 @@ mod service;
 use async_std::task;
 use potatonet::client::*;
 use potatonet::node::*;
+use potatonet_common::Context;
 use service::*;
 use std::time::Duration;
 
@@ -60,4 +61,10 @@ async fn test_service() {
     let proxyservice_client = ProxyServiceClient::new(&client);
     assert_eq!(proxyservice_client.add_one(4).await.unwrap(), 294);
     assert_eq!(proxyservice_client.add_one(10).await.unwrap(), 304);
+
+    // Publish
+    client.publish(A { n: 10 }).await;
+    assert_eq!(testservice_client.get().await.unwrap(), 314);
+    client.publish(A { n: -10 }).await;
+    assert_eq!(testservice_client.get().await.unwrap(), 304);
 }
