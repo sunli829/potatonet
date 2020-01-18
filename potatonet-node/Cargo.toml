@@ -22,4 +22,4 @@ serde_derive = "1.0.104"
 rmp-serde = "0.14.0"
 log = "0.4.8"
 bytes = { version = "0.5.3", features = ["serde"] }
-async-std = { version = "1.4.0", features = ["attributes"] }
+async-std = { version = "1.4.0", features = ["attributes", "unstable"] }
