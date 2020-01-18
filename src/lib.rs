@@ -27,15 +27,3 @@ pub use potatonet_codegen::{message, service};
 pub mod node {
     pub use potatonet_node::*;
 }
-
-/// 系统服务
-pub mod services {
-    #[cfg(feature = "service-logger")]
-    /// 日志
-    pub mod logger {
-        pub use potatonet_service_logger::*;
-    }
-}
-
-#[cfg(feature = "service-logger")]
-pub use potatonet_service_logger::{debug, error, info, log, msg_and_kvs, trace, warn};
