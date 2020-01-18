@@ -2,7 +2,7 @@ use crate::{Backend, Item};
 use bson::bson;
 use mongodb::options::FindOptions;
 use mongodb::{Client, Collection};
-use potatonet_node::Result;
+use potatonet::*;
 
 /// Mongodb日志后台配置
 pub struct MongoBackendConfig {

@@ -1,5 +1,10 @@
 //! PotatoNet微服务框架
 
+#[doc(hidden)]
+pub use async_trait;
+#[doc(hidden)]
+pub use serde_derive;
+
 pub use potatonet_common::*;
 
 #[cfg(feature = "bus")]

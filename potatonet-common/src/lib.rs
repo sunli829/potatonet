@@ -32,4 +32,7 @@ pub trait Context {
 
     /// 发送通知
     async fn notify<T: Serialize + Send + Sync>(&self, service_name: &str, request: Request<T>);
+
+    /// 给指定服务发送通知
+    async fn notify_to<T: Serialize + Send + Sync>(&self, to: ServiceId, request: Request<T>);
 }

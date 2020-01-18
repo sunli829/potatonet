@@ -1,14 +1,13 @@
 use crate::service::{DynService, NamedService, Service, ServiceAdapter};
-use crate::LocalServiceId;
+use potatonet_common::LocalServiceId;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
 
 /// 应用
 pub struct App {
     /// 本地服务
-    pub(crate) services: Vec<(String, AtomicBool, Box<DynService>)>,
+    pub(crate) services: Vec<(String, Box<DynService>)>,
 
     /// 服务名对应本地服务id
     pub(crate) services_map: HashMap<String, LocalServiceId>,
@@ -44,15 +43,10 @@ impl App {
         S::Notify: Serialize + DeserializeOwned + Send,
     {
         let name = name.into();
-        self.services.push((
-            name.clone(),
-            Default::default(),
-            Box::new(ServiceAdapter(service)),
-        ));
-        self.services_map.insert(
-            name,
-            LocalServiceId::from_u32((self.services.len() - 1) as u32),
-        );
+        self.services
+            .push((name.clone(), Box::new(ServiceAdapter(service))));
+        self.services_map
+            .insert(name, LocalServiceId((self.services.len() - 1) as u32));
         self
     }
 }

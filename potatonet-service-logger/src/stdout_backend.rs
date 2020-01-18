@@ -1,5 +1,5 @@
 use crate::{Backend, Item};
-use potatonet_node::Result;
+use potatonet::*;
 use std::fmt::Write;
 
 /// 标准输出日志后台

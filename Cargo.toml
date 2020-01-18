@@ -12,15 +12,11 @@ keywords = ["rpc", "network", "macroservice"]
 categories = ["network-programming"]
 
 [features]
-default = [
-    "bus", "client", "codegen", "node",
-    "service-logger"
-]
+default = ["bus", "client", "codegen", "node"]
 bus = ["potatonet-bus"]
 client = ["potatonet-client"]
 codegen = ["potatonet-codegen"]
 node = ["potatonet-node"]
-service-logger = ["potatonet-service-logger"]
 
 [dependencies]
 potatonet-common = { version = "0.3.3", path = "potatonet-common" }
@@ -28,10 +24,11 @@ potatonet-bus = { version = "0.3.3", path = "potatonet-bus", optional = true }
 potatonet-client = { version = "0.3.3", path = "potatonet-client", optional = true }
 potatonet-codegen = { version = "0.3.3", path = "potatonet-codegen", optional = true }
 potatonet-node = { version = "0.3.3", path = "potatonet-node", optional = true }
-potatonet-service-logger = { version = "0.3.3", path = "potatonet-service-logger", optional = true }
 serde = "1.0.104"
+serde_derive = "1.0.104"
 async-std = { version = "1.4.0", features = ["attributes"] }
 futures = "0.3.1"
+async-trait = "0.1.22"
 
 [dev-dependencies]
 linefeed = "0.6.0"

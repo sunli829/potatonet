@@ -3,7 +3,7 @@ mod mongo_backend;
 mod stdout_backend;
 
 use chrono::{DateTime, Utc};
-use potatonet_node::*;
+use potatonet::*;
 use rmpv::Value;
 use std::collections::HashMap;
 

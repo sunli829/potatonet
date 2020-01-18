@@ -1,5 +1,6 @@
-use crate::{Error, Event, NodeContext, Request, Response, Result};
+use crate::NodeContext;
 use bytes::Bytes;
+use potatonet_common::{Error, Event, Request, Response, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -31,7 +32,7 @@ pub trait Service: Sync + Send {
         request: Request<Self::Req>,
     ) -> Result<Response<Self::Rep>> {
         bail!(Error::MethodNotFound {
-            method: request.method.clone()
+            method: request.method
         })
     }
 

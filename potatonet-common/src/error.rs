@@ -4,7 +4,7 @@ use crate::NodeId;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("method '{method}' not found")]
-    MethodNotFound { method: String },
+    MethodNotFound { method: u32 },
 
     #[error("service '{service_name}' not found")]
     ServiceNotFound { service_name: String },

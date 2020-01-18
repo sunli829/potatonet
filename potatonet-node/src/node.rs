@@ -1,16 +1,16 @@
-use crate::{App, NodeContext, Request, Response, ResponseBytes};
+use crate::{App, NodeContext};
 use anyhow::Result;
 use async_std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use async_std::stream;
 use async_std::task;
 use futures::channel::{mpsc, oneshot};
-use futures::future::{AbortHandle, Abortable};
 use futures::lock::Mutex;
 use futures::prelude::*;
-use potatonet_common::bus_message::Message;
-use potatonet_common::{bus_message, LocalServiceId, RequestBytes};
+use futures::select;
+use potatonet_common::{bus_message, LocalServiceId, NodeId, Request, Response, ResponseBytes};
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Default)]
 pub struct Requests {
@@ -36,10 +36,13 @@ impl Requests {
     }
 }
 
-pub struct LocalNotify {
-    pub from: LocalServiceId,
-    pub to: LocalServiceId,
-    pub request: RequestBytes,
+#[derive(Clone)]
+pub struct NodeInner {
+    pub app: Arc<App>,
+    pub node_id: NodeId,
+    pub requests: Arc<Mutex<Requests>>,
+    pub tx_abort: mpsc::Sender<()>,
+    pub tx_send_msg: mpsc::Sender<bus_message::Message>,
 }
 
 /// 节点构建器
@@ -70,296 +73,219 @@ impl NodeBuilder {
         self
     }
 
+    async fn init_services(inner: &NodeInner) {
+        // 开始所有服务
+        for (idx, (service_name, service)) in inner.app.services.iter().enumerate() {
+            info!("start service. name={}", service_name);
+            let lid = LocalServiceId(idx as u32);
+            service
+                .start(&NodeContext {
+                    inner: &inner,
+                    from: None,
+                    service_name: &service_name,
+                    local_service_id: LocalServiceId(idx as u32),
+                })
+                .await;
+
+            // 注册服务
+            inner
+                .tx_send_msg
+                .clone()
+                .send(bus_message::Message::RegisterService {
+                    name: service_name.clone(),
+                    id: lid,
+                })
+                .await
+                .ok();
+        }
+    }
+
+    async fn process_incoming_msg(inner: &NodeInner, msg: bus_message::Message) {
+        match msg {
+            // 请求
+            bus_message::Message::XReq {
+                from,
+                to,
+                seq,
+                method,
+                data,
+            } => {
+                task::spawn({
+                    let mut inner = inner.clone();
+                    async move {
+                        if let Some((service_name, service)) = inner.app.services.get(to.0 as usize)
+                        {
+                            let res = service
+                                .call(
+                                    &NodeContext {
+                                        inner: &inner,
+                                        from: Some(from),
+                                        service_name: &service_name,
+                                        local_service_id: to,
+                                    },
+                                    Request::new(method, data),
+                                )
+                                .await;
+                            inner
+                                .tx_send_msg
+                                .send(bus_message::Message::Rep {
+                                    seq,
+                                    result: res
+                                        .map(|resp| resp.data)
+                                        .map_err(|err| err.to_string()),
+                                })
+                                .await
+                                .ok();
+                        } else {
+                            inner
+                                .tx_send_msg
+                                .send(bus_message::Message::Rep {
+                                    seq,
+                                    result: Err("service not found".to_string()),
+                                })
+                                .await
+                                .ok();
+                        }
+                    }
+                });
+            }
+
+            // 响应
+            bus_message::Message::Rep { seq, result } => {
+                if let Some(tx) = inner.requests.lock().await.pending.remove(&seq) {
+                    tx.send(result.map(|data| Response::new(data))).ok();
+                }
+            }
+
+            // 通知
+            bus_message::Message::Notify {
+                from,
+                to_service,
+                method,
+                data,
+            } => {
+                task::spawn({
+                    let inner = inner.clone();
+                    async move {
+                        if let Some(lid) = inner.app.services_map.get(&to_service) {
+                            if let Some((service_name, service)) =
+                                inner.app.services.get(lid.0 as usize)
+                            {
+                                service
+                                    .notify(
+                                        &NodeContext {
+                                            inner: &inner,
+                                            from: Some(from),
+                                            service_name: &service_name,
+                                            local_service_id: *lid,
+                                        },
+                                        Request::new(method, data),
+                                    )
+                                    .await;
+                            }
+                        }
+                    }
+                });
+            }
+
+            // 系统事件
+            bus_message::Message::Event { event } => {
+                task::spawn({
+                    let inner = inner.clone();
+                    async move {
+                        for (idx, (service_name, service)) in inner.app.services.iter().enumerate()
+                        {
+                            service
+                                .event(
+                                    &NodeContext {
+                                        inner: &inner,
+                                        from: None,
+                                        service_name: &service_name,
+                                        local_service_id: LocalServiceId(idx as u32),
+                                    },
+                                    &event,
+                                )
+                                .await;
+                        }
+                    }
+                });
+            }
+            _ => {}
+        }
+    }
+
     /// 运行节点
     pub async fn run(self) -> Result<()> {
+        let app = Arc::new(self.app);
+
         // 连接到消息总线
         let stream = TcpStream::connect(
             self.bus_addr
                 .unwrap_or_else(|| "127.0.0.1:39901".parse().unwrap()),
         )
         .await?;
-
-        // 发送hello消息，并等待服务响应
-        let name = self
-            .name
-            .unwrap_or_else(|| names::Generator::default().next().unwrap());
-        bus_message::write_message(&stream, &bus_message::Message::RegisterNode(name.clone()))
-            .await?;
-        let node_id = match bus_message::read_message(&stream).await {
-            Ok(bus_message::Message::NodeRegistered(node_id)) => node_id,
-            res => {
-                println!("{:?}", res);
-                bail!("unable connect to bus")
-            }
-        };
-        info!("bus connected. node_id={}", node_id);
-
-        // 创建接收和发送消息任务
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let (mut tx, mut rx) = mpsc::channel(16);
         let stream = Arc::new(stream);
+        let (tx_incoming_msg, mut rx_incoming_msg) = mpsc::channel(16);
+        let (mut tx_outgoing_msg, rx_outgoing_msg) = mpsc::channel(16);
 
-        // 发送任务
-        let send_handle = task::spawn({
-            let stream = stream.clone();
-            async move {
-                while let Some(msg) = rx.next().await {
-                    if let Err(_) = bus_message::write_message(&*stream, &msg).await {
-                        return;
+        let (reader_task, abort_reader) =
+            future::abortable(bus_message::read_messages(stream.clone(), tx_incoming_msg));
+        let reader_handle = task::spawn(reader_task);
+
+        let (writer_task, abort_writer) =
+            future::abortable(bus_message::write_messages(stream.clone(), rx_outgoing_msg));
+        let writer_handle = task::spawn(writer_task);
+
+        // 心跳发送定时器
+        let mut hb_timer = stream::interval(Duration::from_secs(1)).fuse();
+        let (tx_abort, mut rx_abort) = mpsc::channel::<()>(1);
+        let mut inner = None;
+
+        loop {
+            select! {
+                _ = rx_abort.next() => {
+                    // 退出
+                    break;
+                }
+                _ = hb_timer.next() => {
+                    // 发送心跳
+                    if let Err(_) = tx_outgoing_msg.send(bus_message::Message::Ping).await {
+                        // 连接已断开
+                        break;
+                    }
+                }
+                msg = rx_incoming_msg.next() => {
+                    if let Some(msg) = msg {
+                        if let bus_message::Message::Hello(node_id) = msg {
+                            // 节点注册成功
+                            inner = Some({
+                                let inner = NodeInner {
+                                            app: app.clone(),
+                                            node_id,
+                                            requests: Arc::new(Default::default()),
+                                            tx_abort: tx_abort.clone(),
+                                            tx_send_msg: tx_outgoing_msg.clone(),
+                                        };
+                                Self::init_services(&inner).await;
+                                inner
+                            });
+                        } else if let Some(inner) = &inner {
+                            Self::process_incoming_msg(&inner, msg).await;
+                        }
+                    } else {
+                        // 连接已断开
+                        break;
                     }
                 }
             }
-        });
-
-        let app = Arc::new(self.app);
-        let requests = Arc::new(Mutex::new(Requests::default()));
-
-        // 处理本地通知消息
-        // 同一个节点的服务发送给另一个服务的通知发送到该队列，避免循环通知出现的栈溢出问题
-        let (tx_local_notify, rx_local_notify) = mpsc::unbounded::<LocalNotify>();
-        let local_notify_fut = {
-            let app = app.clone();
-            let requests = requests.clone();
-            let tx = tx.clone();
-            let abort_handle = abort_handle.clone();
-            let tx_local_notify = tx_local_notify.clone();
-            async move {
-                rx_local_notify
-                    .for_each_concurrent(4, |notify| {
-                        async {
-                            if let Some((service_name, init, service)) =
-                                app.services.get(notify.to.to_u32() as usize)
-                            {
-                                if init.load(Ordering::Relaxed) {
-                                    service
-                                        .notify(
-                                            &NodeContext {
-                                                from: Some(notify.from.to_global(node_id)),
-                                                service_name,
-                                                node_id,
-                                                local_service_id: notify.to,
-                                                app: &app,
-                                                tx: tx.clone(),
-                                                tx_local_notify: tx_local_notify.clone(),
-                                                requests: requests.clone(),
-                                                abort_handle: abort_handle.clone(),
-                                            },
-                                            notify.request,
-                                        )
-                                        .await;
-                                }
-                            }
-                        }
-                    })
-                    .await;
-            }
-        };
-        let (abort_ln_handle, abort_ln_registration) = AbortHandle::new_pair();
-        let local_notify_handle =
-            task::spawn(Abortable::new(local_notify_fut, abort_ln_registration));
-
-        // 处理消息
-        let recv_handle = task::spawn({
-            let app = app.clone();
-            let requests = requests.clone();
-            let tx = tx.clone();
-            let tx_local_notify = tx_local_notify.clone();
-            let abort_handle = abort_handle.clone();
-            Abortable::new(
-                async move {
-                    while let Ok(msg) = bus_message::read_message(&*stream).await {
-                        match msg {
-                            bus_message::Message::XReq {
-                                from,
-                                to,
-                                seq,
-                                method,
-                                data,
-                            } => {
-                                task::spawn({
-                                    let app = app.clone();
-                                    let abort_handle = abort_handle.clone();
-                                    let mut tx = tx.clone();
-                                    let tx_local_notify = tx_local_notify.clone();
-                                    let requests = requests.clone();
-
-                                    async move {
-                                        if let Some((service_name, init, service)) =
-                                            app.services.get(to.to_u32() as usize)
-                                        {
-                                            if init.load(Ordering::Relaxed) {
-                                                let res = service
-                                                    .call(
-                                                        &NodeContext {
-                                                            from,
-                                                            service_name,
-                                                            node_id,
-                                                            local_service_id: to,
-                                                            app: &app,
-                                                            tx: tx.clone(),
-                                                            tx_local_notify: tx_local_notify
-                                                                .clone(),
-                                                            requests,
-                                                            abort_handle,
-                                                        },
-                                                        Request::new(method, data),
-                                                    )
-                                                    .await;
-                                                tx.send(bus_message::Message::Rep {
-                                                    seq,
-                                                    result: res
-                                                        .map(|resp| resp.data)
-                                                        .map_err(|err| err.to_string()),
-                                                })
-                                                .await
-                                                .ok();
-                                            } else {
-                                                tx.send(bus_message::Message::Rep {
-                                                    seq,
-                                                    result: Err(
-                                                        "service not initialized".to_string()
-                                                    ),
-                                                })
-                                                .await
-                                                .ok();
-                                            }
-                                        } else {
-                                            tx.send(bus_message::Message::Rep {
-                                                seq,
-                                                result: Err("service not found".to_string()),
-                                            })
-                                            .await
-                                            .ok();
-                                        }
-                                    }
-                                });
-                            }
-                            bus_message::Message::Rep { seq, result } => {
-                                if let Some(tx) = requests.lock().await.pending.remove(&seq) {
-                                    tx.send(result.map(|data| Response::new(data))).ok();
-                                }
-                            }
-                            bus_message::Message::Notify {
-                                from,
-                                to_service,
-                                method,
-                                data,
-                            } => {
-                                task::spawn({
-                                    let app = app.clone();
-                                    let abort_handle = abort_handle.clone();
-                                    let tx = tx.clone();
-                                    let tx_local_notify = tx_local_notify.clone();
-                                    let requests = requests.clone();
-
-                                    async move {
-                                        if let Some(lid) = app.services_map.get(&to_service) {
-                                            if let Some((service_name, init, service)) =
-                                                app.services.get(lid.to_u32() as usize)
-                                            {
-                                                if init.load(Ordering::Relaxed) {
-                                                    service
-                                                        .notify(
-                                                            &NodeContext {
-                                                                from,
-                                                                service_name,
-                                                                node_id,
-                                                                local_service_id: *lid,
-                                                                app: &app,
-                                                                tx: tx.clone(),
-                                                                tx_local_notify: tx_local_notify
-                                                                    .clone(),
-                                                                requests,
-                                                                abort_handle,
-                                                            },
-                                                            Request::new(method, data),
-                                                        )
-                                                        .await;
-                                                }
-                                            }
-                                        }
-                                    }
-                                });
-                            }
-                            bus_message::Message::Event { event } => {
-                                task::spawn({
-                                    let app = app.clone();
-                                    let abort_handle = abort_handle.clone();
-                                    let tx = tx.clone();
-                                    let tx_local_notify = tx_local_notify.clone();
-                                    let requests = requests.clone();
-
-                                    async move {
-                                        for (idx, (service_name, init, service)) in
-                                            app.services.iter().enumerate()
-                                        {
-                                            if init.load(Ordering::Relaxed) {
-                                                service
-                                                        .event(
-                                                            &NodeContext {
-                                                                from: None,
-                                                                service_name,
-                                                                node_id,
-                                                                local_service_id: LocalServiceId::from_u32(
-                                                                    idx as u32,
-                                                                ),
-                                                                app: &app,
-                                                                tx: tx.clone(),
-                                                                tx_local_notify: tx_local_notify.clone(),
-                                                                requests: requests.clone(),
-                                                                abort_handle: abort_handle.clone(),
-                                                            },
-                                                            &event,
-                                                        )
-                                                        .await;
-                                            }
-                                        }
-                                    }
-                                });
-                            }
-                            _ => {}
-                        }
-                    }
-                },
-                abort_registration,
-            )
-        });
-
-        // 开始所有服务
-        for (idx, (service_name, init, service)) in app.services.iter().enumerate() {
-            info!("start service. name={}", service_name);
-            let lid = LocalServiceId::from_u32(idx as u32);
-            service
-                .start(&NodeContext {
-                    from: None,
-                    service_name,
-                    node_id,
-                    local_service_id: lid,
-                    app: &app,
-                    tx: tx.clone(),
-                    tx_local_notify: tx_local_notify.clone(),
-                    requests: requests.clone(),
-                    abort_handle: abort_handle.clone(),
-                })
-                .await;
-            init.store(true, Ordering::Relaxed);
-
-            // 注册服务
-            tx.send(bus_message::Message::RegisterService {
-                name: service_name.clone(),
-                id: lid,
-            })
-            .await
-            .ok();
         }
 
-        recv_handle.await.ok();
-        tx.send(Message::UnregisterNode).await.ok();
-        drop(tx);
-        drop(tx_local_notify);
-        abort_ln_handle.abort();
-        local_notify_handle.await.ok();
-        send_handle.await;
+        tx_outgoing_msg.send(bus_message::Message::Bye).await.ok();
+
+        abort_reader.abort();
+        abort_writer.abort();
+        reader_handle.await.ok();
+        writer_handle.await.ok();
         Ok(())
     }
 }
