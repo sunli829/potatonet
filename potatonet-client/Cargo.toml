@@ -13,7 +13,7 @@ categories = ["network-programming"]
 
 [dependencies]
 potatonet-common = { version = "0.3.4", path = "../potatonet-common" }
-async-std = { version = "1.4.0", features = ["attributes"] }
+async-std = { version = "1.4.0", features = ["attributes", "unstable"] }
 async-trait = "0.1.22"
 serde = "1.0.104"
 serde_derive = "1.0.104"
