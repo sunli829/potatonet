@@ -98,6 +98,11 @@ impl<'a> NodeContext<'a> {
     {
         self.subscribe_with_topic(T::name(), handler).await
     }
+
+    /// 取消订阅
+    pub async fn unsubscribe(&self, id: SubscribeId) {
+        self.client.unsubscribe(id).await;
+    }
 }
 
 #[async_trait::async_trait]
