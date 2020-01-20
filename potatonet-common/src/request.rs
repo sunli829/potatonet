@@ -36,9 +36,9 @@ pub type RequestBytes = Request<Bytes>;
 pub type ResponseBytes = Response<Bytes>;
 
 impl<T: Serialize> Request<T> {
-    pub fn to_bytes(self) -> RequestBytes {
+    pub fn to_bytes(&self) -> RequestBytes {
         RequestBytes {
-            method: self.method,
+            method: self.method.clone(),
             data: Bytes::from(rmp_serde::to_vec(&self.data).unwrap()),
         }
     }
@@ -54,7 +54,7 @@ impl<T: DeserializeOwned> Request<T> {
 }
 
 impl<T: Serialize> Response<T> {
-    pub fn to_bytes(self) -> ResponseBytes {
+    pub fn to_bytes(&self) -> ResponseBytes {
         ResponseBytes {
             data: Bytes::from(rmp_serde::to_vec(&self.data).unwrap()),
         }

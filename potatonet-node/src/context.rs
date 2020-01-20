@@ -116,8 +116,9 @@ impl<'a> Context for NodeContext<'a> {
 
         if let Some(lid) = self.app.services_map.get(service_name).copied() {
             // 优先调用本地服务
+            let request_bytes = request.to_bytes();
             if let Some((_, service)) = self.app.services.get(lid.0 as usize) {
-                let resp = service.call(self, request.to_bytes()).await?;
+                let resp = service.call(self, request_bytes).await?;
                 return Ok(Response::from_bytes(resp));
             }
         }
@@ -127,7 +128,7 @@ impl<'a> Context for NodeContext<'a> {
 
     async fn notify<T: Serialize + Send + 'static>(&self, service_name: &str, request: Request<T>) {
         trace!("notify. service={} method={}", service_name, request.method);
-        let request = request.to_bytes();
+        let request_bytes = request.to_bytes();
 
         // 通知本地服务
         if let Some(lid) = self.app.services_map.get(service_name).copied() {
@@ -135,7 +136,6 @@ impl<'a> Context for NodeContext<'a> {
             let app = self.app.clone();
             let service_name = service_name.to_string();
             let from = self.local_service_id.to_global(client.node_id());
-            let request = request.clone();
             let tx_abort = self.tx_abort.clone();
             task::spawn(async move {
                 if let Some((_, service)) = app.services.get(lid.0 as usize) {
@@ -149,7 +149,7 @@ impl<'a> Context for NodeContext<'a> {
                                 local_service_id: lid,
                                 tx_abort,
                             },
-                            request,
+                            request_bytes,
                         )
                         .await;
                 }
@@ -162,7 +162,7 @@ impl<'a> Context for NodeContext<'a> {
 
     async fn notify_to<T: Serialize + Send + 'static>(&self, to: ServiceId, request: Request<T>) {
         trace!("notify to. to={} method={}", to, request.method);
-        let request = request.to_bytes();
+        let request_bytes = request.to_bytes();
 
         if to.node_id == self.client.node_id() {
             // 是本地服务
@@ -182,7 +182,7 @@ impl<'a> Context for NodeContext<'a> {
                             local_service_id: to.local_service_id,
                             tx_abort,
                         },
-                        request,
+                        request_bytes,
                     );
                 }
             });
