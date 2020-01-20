@@ -1,3 +1,4 @@
+use crate::app::BoxService;
 use crate::NodeContext;
 use bytes::Bytes;
 use potatonet_common::{Error, Request, Response, Result};
@@ -46,10 +47,8 @@ pub trait NamedService: Service {
     fn name(&self) -> &'static str;
 }
 
-/// 服务适配器
-pub struct ServiceAdapter<S: Service>(pub S);
-
-pub type DynService = dyn Service<Req = Bytes, Rep = Bytes, Notify = Bytes>;
+/// 异步服务适配器
+struct ServiceAdapter<S: Service>(S);
 
 #[async_trait::async_trait]
 impl<S> Service for ServiceAdapter<S>
@@ -80,5 +79,11 @@ where
 
     async fn notify(&self, ctx: &NodeContext<'_>, request: Request<Self::Req>) {
         self.0.notify(ctx, Request::from_bytes(request)).await;
+    }
+}
+
+impl<S: Service + 'static> From<S> for BoxService {
+    fn from(service: S) -> Self {
+        Box::new(ServiceAdapter(service))
     }
 }
