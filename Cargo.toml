@@ -1,6 +1,6 @@
 [package]
 name = "potatonet"
-version = "0.4.2"
+version = "0.4.3"
 authors = ["Sunli <scott_s829@163.com>"]
 description = "PotatoNet is a lightweight microservices framework."
 edition = "2018"
@@ -23,7 +23,7 @@ potatonet-common = { version = "0.4.2", path = "potatonet-common" }
 potatonet-bus = { version = "0.4.1", path = "potatonet-bus", optional = true }
 potatonet-client = { version = "0.4.1", path = "potatonet-client", optional = true }
 potatonet-codegen = { version = "0.4.1", path = "potatonet-codegen", optional = true }
-potatonet-node = { version = "0.4.2", path = "potatonet-node", optional = true }
+potatonet-node = { version = "0.4.3", path = "potatonet-node", optional = true }
 serde = "1.0.104"
 serde_derive = "1.0.104"
 async-std = { version = "1.4.0", features = ["attributes"] }

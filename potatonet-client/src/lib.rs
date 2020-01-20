@@ -122,7 +122,7 @@ impl Client {
             Ok(msg) => {
                 println!("{:?}", msg);
                 bail!("invalid response")
-            },
+            }
             Err(err) => return Err(err),
         };
 
@@ -212,6 +212,15 @@ impl Client {
                 name: name.into(),
                 id,
             })
+            .await
+            .ok();
+    }
+
+    /// 注销服务
+    pub async fn unregister_service(&self, id: LocalServiceId) {
+        self.tx
+            .clone()
+            .send(bus_message::Message::UnregisterService { id })
             .await
             .ok();
     }

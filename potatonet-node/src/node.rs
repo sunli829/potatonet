@@ -183,6 +183,26 @@ impl NodeBuilder {
             }
         }
 
+        // 停止所有服务
+        for (idx, (service_name, service)) in app.services.iter().enumerate().rev() {
+            info!("stop service. name={}", service_name);
+            let lid = LocalServiceId(idx as u32);
+            service
+                .stop(&NodeContext {
+                    client: client.clone(),
+                    app: app.clone(),
+                    from: None,
+                    service_name: &service_name,
+                    local_service_id: LocalServiceId(idx as u32),
+                    tx_abort: tx_abort.clone(),
+                })
+                .await;
+
+            // 注销服务
+            trace!("unregister service. name={} lid={}", service_name, lid);
+            client.unregister_service(lid).await;
+        }
+
         info!("node shutdown.");
         Ok(())
     }
