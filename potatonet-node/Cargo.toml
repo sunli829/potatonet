@@ -12,9 +12,9 @@ keywords = ["rpc", "network", "macroservice"]
 categories = ["network-programming"]
 
 [dependencies]
-potatonet-common = { version = "0.4.2", path = "../potatonet-common" }
-potatonet-codegen = { version = "0.4.1", path = "../potatonet-codegen" }
-potatonet-client = { version = "0.4.1", path = "../potatonet-client" }
+potatonet-common = { version = "0.4.3", path = "../potatonet-common" }
+potatonet-codegen = { version = "0.4.3", path = "../potatonet-codegen" }
+potatonet-client = { version = "0.4.3", path = "../potatonet-client" }
 async-trait = "0.1.22"
 anyhow = "1.0.26"
 futures = "0.3.1"
